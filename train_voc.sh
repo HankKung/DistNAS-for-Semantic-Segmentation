@@ -1,0 +1,1 @@
+CUDA_VISIBLE_DEVICES=0 python train_autodeeplab.py --backbone resnet --base_size 321 --arch_lr 0.003 --lr 0.03 --workers 1 --use_sbd --epochs 60 --batch_size 2 --gpu_ids 0 --eval_interval 1 --dataset cityscapes --lr_scheduler 'cos'
