@@ -12,6 +12,7 @@ class MixedOp (nn.Module):
     def __init__(self, C, stride):
         super(MixedOp, self).__init__()
         self._ops = nn.ModuleList()
+
         for primitive in PRIMITIVES:
             op = OPS[primitive](C, stride, False)
         if 'pool' in primitive:
@@ -20,6 +21,8 @@ class MixedOp (nn.Module):
 
     def forward(self, x, weights):
         return sum(w * op(x) for w, op in zip(weights, self._ops))
+    def latency(self, weights):
+        return sum(w *la for w, la in zip(weights, OPS_la))
 
 
 class Cell(nn.Module):
@@ -72,6 +75,20 @@ class Cell(nn.Module):
 
         concat_feature = torch.cat(states[-self._multiplier:], dim=1)
         return  self.ReLUConvBN (concat_feature)
+
+    def latency(self, s0, s1, weights):
+        if s0 is not None :
+            states = [s0, s1]
+        else :
+            states = [s1]
+        offset = 0
+        total_latency=0
+        for i in range(self._steps):
+            s = sum(self._ops[offset+j].latency(weights[offset+j]) for j in len(states))
+            offset += len(states)
+            states.append(1)
+            total_latency+=s
+        return total_latency
 
 
 

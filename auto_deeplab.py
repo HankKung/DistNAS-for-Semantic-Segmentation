@@ -181,6 +181,14 @@ class AutoDeeplab (nn.Module) :
         self.level_16 = []
         self.level_32 = []
 
+        self.la_4=[]
+        self.la_8=[]
+        self.la_16=[]
+        self.la_32=[]
+
+        self.la_4.append(0)
+
+
         # self._init_level_arr (x)
         temp = self.stem0 (x)
         self.level_2.append (self.stem1 (temp))
@@ -195,95 +203,145 @@ class AutoDeeplab (nn.Module) :
 
             if layer == 0 :
                 level4_new = self.cells[count] (None, self.level_4[-1], weight_cell)
+                la_4_new = self.cells[count].latency(None, 2 weight_cell)
                 count += 1
                 level8_new = self.cells[count] (None, self.level_4[-1], weight_cell)
+                la_8_new = self.cells[count].latency(None, 2, weight_cell)
                 count += 1
                 self.level_4.append (level4_new * weight_network[layer][0][0])
                 self.level_8.append (level8_new * weight_network[layer][0][1])
+
+                self.la_4.append (la4_new * weight_network[layer][0][0])
+                self.la_8.append (la8_new * weight_network[layer][0][1])
                 # print ((self.level_4[-2]).size (),  (self.level_4[-1]).size())
             elif layer == 1 :
                 level4_new_1 = self.cells[count] (self.level_4[-2], self.level_4[-1], weight_cell)
+                la_4_new_1 = self.cells[count].latency(1, 2, weight_cell)
                 count += 1
                 level4_new_2 = self.cells[count] (self.level_4[-2], self.level_8[-1], weight_cell)
+                la_4_new_2 = self.cells[count].latency(1, 2, weight_cell)
                 count += 1
                 level4_new = weight_network[layer][0][0] * level4_new_1 + weight_network[layer][0][1] * level4_new_2
+                la_3_new = weight_network[layer][0][0] * la4_new_1 + weight_network[layer][0][1] * la4_new_2
 
                 level8_new_1 = self.cells[count] (None, self.level_4[-1], weight_cell)
+                la_8_new_1 = self.cells[count].latency(None, 2, weight_cell)
                 count += 1
                 level8_new_2 = self.cells[count] (None, self.level_8[-1], weight_cell)
+                la_8_new_2 = self.cells[count].latency(None, 2, weight_cell)
                 count += 1
                 level8_new = weight_network[layer][1][0] * level8_new_1 + weight_network[layer][1][1] * level8_new_2
+                la8_new = weight_network[layer][1][0] * la8_new_1 + weight_network[layer][1][1] * la8_new_2
 
                 level16_new = self.cells[count] (None, self.level_8[-1], weight_cell)
+                la_16_new = self.cells[count].latency (None, 2, weight_cell)
+
                 level16_new = level16_new * weight_network[layer][1][2]
+                la_16_new = la_16_new * weight_network[layer][1][2]
                 count += 1
 
 
                 self.level_4.append (level4_new)
                 self.level_8.append (level8_new)
                 self.level_16.append (level16_new)
+
+                self.la_4.append (la_4_new)
+                self.la_8.append (la_8_new)
+                self.la_16.append (la_16_new)
 
             elif layer == 2 :
                 level4_new_1 = self.cells[count] (self.level_4[-2], self.level_4[-1], weight_cell)
+                la_4_new_1 = self.cells[count].latency (1, 2, weight_cell)
                 count += 1
                 level4_new_2 = self.cells[count] (self.level_4[-2], self.level_8[-1], weight_cell)
+                la_4_new_2 = self.cells[count].latency (1, 2, weight_cell)
                 count += 1
                 level4_new = weight_network[layer][0][0] * level4_new_1 + weight_network[layer][0][1] * level4_new_2
+                la_4_new = weight_network[layer][0][0] * la_4_new_1 + weight_network[layer][0][1] * la_4_new_2
 
                 level8_new_1 = self.cells[count] (self.level_8[-2], self.level_4[-1], weight_cell)
+                la_8_new_1 = self.cells[count].latency (1, 2, weight_cell)
                 count += 1
                 level8_new_2 = self.cells[count] (self.level_8[-2], self.level_8[-1], weight_cell)
+                la_8_new_2 = self.cells[count].latency (1, 2, weight_cell)
                 count += 1
                 # print (self.level_8[-1].size(),self.level_16[-1].size())
                 level8_new_3 = self.cells[count] (self.level_8[-2], self.level_16[-1], weight_cell)
+                la_8_new_3 = self.cells[count].latency (1, 2, weight_cell)
                 count += 1
                 level8_new = weight_network[layer][1][0] * level8_new_1 + weight_network[layer][1][1] * level8_new_2 + weight_network[layer][1][2] * level8_new_3
+                la_8_new = weight_network[layer][1][0] * la_8_new_1 + weight_network[layer][1][1] * la_4_new_2 +weight_network[layer][1][2] * la_8_new_3
+
 
                 level16_new_1 = self.cells[count] (None, self.level_8[-1], weight_cell)
+                la_16_new_1 = self.cells[count].latency (None, 2, weight_cell)
                 count += 1
                 level16_new_2 = self.cells[count] (None, self.level_16[-1], weight_cell)
+                la_16_new_2 = self.cells[count].latency (None, 2, weight_cell)
                 count += 1
                 level16_new = weight_network[layer][2][0] * level16_new_1 + weight_network[layer][2][1] * level16_new_2
-
+                la_16_new = weight_network[layer][2][0] * la_16_new_1 + weight_network[layer][2][1] * la_16_new_2
 
                 level32_new = self.cells[count] (None, self.level_16[-1], weight_cell)
+                la_32_new = self.cells[count].latency (None, 2, weight_cell)
+
                 level32_new = level32_new * weight_network[layer][2][2]
+                la_32_new = la_32_new * weight_network[layer][2][2]
                 count += 1
 
                 self.level_4.append (level4_new)
                 self.level_8.append (level8_new)
                 self.level_16.append (level16_new)
                 self.level_32.append (level32_new)
+
+                self.la_4.append (la_4_new)
+                self.la_8.append (la_8_new)
+                self.la_16.append (la_16_new)
+                self.la_32.append (la_32_new)
 
             elif layer == 3 :
                 level4_new_1 = self.cells[count] (self.level_4[-2], self.level_4[-1], weight_cell)
+                la_4_new_1 = self.cells[count].latency (1, 2, weight_cell)
                 count += 1
                 level4_new_2 = self.cells[count] (self.level_4[-2], self.level_8[-1], weight_cell)
+                la_4_new_2 = self.cells[count].latency (1, 2, weight_cell)                
                 count += 1
                 level4_new = weight_network[layer][0][0] * level4_new_1 + weight_network[layer][0][1] * level4_new_2
+                la_4_new = weight_network[layer][0][0] * la_4_new_1 + weight_network[layer][0][1] * la_4_new_2
+
 
                 level8_new_1 = self.cells[count] (self.level_8[-2], self.level_4[-1], weight_cell)
+                la_8_new_1 = self.cells[count].latency (1, 2, weight_cell)
                 count += 1
                 level8_new_2 = self.cells[count] (self.level_8[-2], self.level_8[-1], weight_cell)
+                la_8_new_2 = self.cells[count].latency (1, 2, weight_cell)
                 count += 1
                 level8_new_3 = self.cells[count] (self.level_8[-2], self.level_16[-1], weight_cell)
+                la_8_new_3 = self.cells[count].latency (1, 2, weight_cell)
                 count += 1
                 level8_new = weight_network[layer][1][0] * level8_new_1 + weight_network[layer][1][1] * level8_new_2 + weight_network[layer][1][2] * level8_new_3
+                la_8_new = weight_network[layer][1][0] * la_8_new_1 + weight_network[layer][1][1] * la_8_new_2 + weight_network[layer][1][2] * la_8_new_3
 
                 level16_new_1 = self.cells[count] (self.level_16[-2], self.level_8[-1], weight_cell)
+                la_16_new_1 = self.cells[count].latency (1, 2, weight_cell)
                 count += 1
                 level16_new_2 = self.cells[count] (self.level_16[-2], self.level_16[-1], weight_cell)
+                la_16_new_2 = self.cells[count].latency (1, 2, weight_cell)
                 count += 1
                 level16_new_3 = self.cells[count] (self.level_16[-2], self.level_32[-1], weight_cell)
+                la_16_new_3 = self.cells[count].latency (1, 2, weight_cell)
                 count += 1
                 level16_new = weight_network[layer][2][0] * level16_new_1 + weight_network[layer][2][1] * level16_new_2 + weight_network[layer][2][2] * level16_new_3
-
+                la_16_new = weight_network[layer][2][0] * la_16_new_1 + weight_network[layer][2][1] * la_16_new_2 + weight_network[layer][2][2] * la_16_new_3
 
                 level32_new_1 = self.cells[count] (None, self.level_16[-1], weight_cell)
+                la_32_new_1 = self.cells[count].latency (None, 2, weight_cell)
                 count += 1
                 level32_new_2 = self.cells[count] (None, self.level_32[-1], weight_cell)
+                la_32_new_2 = self.cells[count].latency (None, 2, weight_cell)
                 count += 1
                 level32_new = weight_network[layer][3][0] * level32_new_1 + weight_network[layer][3][1] * level32_new_2
+                la_32_new = weight_network[layer][3][0] * la_32_new_1 + weight_network[layer][3][1] * la_32_new_2
 
 
                 self.level_4.append (level4_new)
@@ -291,41 +349,61 @@ class AutoDeeplab (nn.Module) :
                 self.level_16.append (level16_new)
                 self.level_32.append (level32_new)
 
+                self.la_4.append (la_4_new)
+                self.la_8.append (la_8_new)
+                self.la_16.append (la_16_new)
+                self.la_32.append (la_32_new)
 
             else :
                 level4_new_1 = self.cells[count] (self.level_4[-2], self.level_4[-1], weight_cell)
+                la_4_new_1 = self.cells[count].latency (1, 2, weight_cell)
                 count += 1
                 level4_new_2 = self.cells[count] (self.level_4[-2], self.level_8[-1], weight_cell)
+                la_4_new_2 = self.cells[count].latency (1, 2, weight_cell)
                 count += 1
                 level4_new = weight_network[layer][0][0] * level4_new_1 + weight_network[layer][0][1] * level4_new_2
+                la_4_new = weight_network[layer][0][0] * la_4_new_1 + weight_network[layer][0][1] * la_4_new_2
                 if layer<11:    
                     self.device_output[layer-4].append(self.aspp_device[layer-4][0](level4_new))		
 
                 level8_new_1 = self.cells[count] (self.level_8[-2], self.level_4[-1], weight_cell)
+                la_8_new_1 = self.cells[count].latency (1, 2, weight_cell)
                 count += 1
                 level8_new_2 = self.cells[count] (self.level_8[-2], self.level_8[-1], weight_cell)
+                la_8_new_2 = self.cells[count].latency (1, 2, weight_cell)
                 count += 1
                 level8_new_3 = self.cells[count] (self.level_8[-2], self.level_16[-1], weight_cell)
+                la_8_new_3 = self.cells[count].latency (1, 2, weight_cell)
                 count += 1
                 level8_new = weight_network[layer][1][0] * level8_new_1 + weight_network[layer][1][1] * level8_new_2 + weight_network[layer][1][2] * level8_new_3
+                la_8_new = weight_network[layer][1][0] * la_8_new_1 + weight_network[layer][1][1] * la_8_new_2 + weight_network[layer][1][2] * la_8_new_3
+
                 if layer<11:    
                     self.device_output[layer-4].append(self.aspp_device[layer-4][1](level8_new))		
 
                 level16_new_1 = self.cells[count] (self.level_16[-2], self.level_8[-1], weight_cell)
+                la_16_new_1 = self.cells[count].latency (1, 2, weight_cell)
                 count += 1
                 level16_new_2 = self.cells[count] (self.level_16[-2], self.level_16[-1], weight_cell)
+                la_16_new_2 = self.cells[count].latency (1, 2, weight_cell)
                 count += 1
                 level16_new_3 = self.cells[count] (self.level_16[-2], self.level_32[-1], weight_cell)
+                la_16_new_3 = self.cells[count].latency (1, 2, weight_cell)
                 count += 1
                 level16_new = weight_network[layer][2][0] * level16_new_1 + weight_network[layer][2][1] * level16_new_2 + weight_network[layer][2][2] * level16_new_3
+                la_16_new = weight_network[layer][2][0] * la_16_new_1 + weight_network[layer][2][1] * la_16_new_2 + weight_network[layer][2][2] * la_16_new_3
+
                 if layer<11:    
                     self.device_output[layer-4].append(self.aspp_device[layer-4][2](level16_new))
 
                 level32_new_1 = self.cells[count] (self.level_32[-2], self.level_16[-1], weight_cell)
+                la_32_new_1 = self.cells[count].latency (1,2, weight_cell)
                 count += 1
                 level32_new_2 = self.cells[count] (self.level_32[-2], self.level_32[-1], weight_cell)
+                la_32_new_2 = self.cells[count].latency (1,2, weight_cell)
                 count += 1
                 level32_new = weight_network[layer][3][0] * level32_new_1 + weight_network[layer][3][1] * level32_new_2
+                la_32_new = weight_network[layer][3][0] * la_32_new_1 + weight_network[layer][3][1] * la_32_new_2
                 if layer<11:    
                     self.device_output[layer-4].append(self.aspp_device[layer-4][3](level32_new))
 

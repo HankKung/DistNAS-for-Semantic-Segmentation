@@ -11,7 +11,19 @@ OPS = {
   'dil_conv_3x3' : lambda C, stride, affine: DilConv(C, C, 3, stride, 2, 2, affine=affine),
   'dil_conv_5x5' : lambda C, stride, affine: DilConv(C, C, 5, stride, 4, 2, affine=affine),
 }
+OPS_la = {
+  'none' : 
+  'avg_pool_3x3' : 
+  'max_pool_3x3' : 
+  'skip_connect' : 
+  'sep_conv_3x3' : 
+  'sep_conv_5x5' : 
+  'dil_conv_3x3' : 
+  'dil_conv_5x5' : 
 
+
+
+}
 class ReLUConvBN(nn.Module):
 
   def __init__(self, C_in, C_out, kernel_size, stride, padding, affine=True):
