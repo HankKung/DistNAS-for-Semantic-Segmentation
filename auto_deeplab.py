@@ -187,7 +187,7 @@ class AutoDeeplab (nn.Module) :
         self.la_32=[]
 
         self.la_4.append(0)
-
+        self.latency = [[0]*4 for _ in range(7)]
 
         # self._init_level_arr (x)
         temp = self.stem0 (x)
@@ -365,7 +365,7 @@ class AutoDeeplab (nn.Module) :
                 la_4_new = weight_network[layer][0][0] * la_4_new_1 + weight_network[layer][0][1] * la_4_new_2
                 if layer<11:    
                     self.device_output[layer-4].append(self.aspp_device[layer-4][0](level4_new))		
-
+                    self.latency[layer-4][0]=la_4_new
                 level8_new_1 = self.cells[count] (self.level_8[-2], self.level_4[-1], weight_cell)
                 la_8_new_1 = self.cells[count].latency (1, 2, weight_cell)
                 count += 1
@@ -380,7 +380,7 @@ class AutoDeeplab (nn.Module) :
 
                 if layer<11:    
                     self.device_output[layer-4].append(self.aspp_device[layer-4][1](level8_new))		
-
+                    self.latency[layer-4][1]=la_8_new
                 level16_new_1 = self.cells[count] (self.level_16[-2], self.level_8[-1], weight_cell)
                 la_16_new_1 = self.cells[count].latency (1, 2, weight_cell)
                 count += 1
@@ -395,7 +395,7 @@ class AutoDeeplab (nn.Module) :
 
                 if layer<11:    
                     self.device_output[layer-4].append(self.aspp_device[layer-4][2](level16_new))
-
+                    self.latency[layer-4][2]=la_16_new
                 level32_new_1 = self.cells[count] (self.level_32[-2], self.level_16[-1], weight_cell)
                 la_32_new_1 = self.cells[count].latency (1,2, weight_cell)
                 count += 1
@@ -406,7 +406,7 @@ class AutoDeeplab (nn.Module) :
                 la_32_new = weight_network[layer][3][0] * la_32_new_1 + weight_network[layer][3][1] * la_32_new_2
                 if layer<11:    
                     self.device_output[layer-4].append(self.aspp_device[layer-4][3](level32_new))
-
+                    self.latency[layer-4][3]=la_32_new
                 self.level_4.append (level4_new)
                 self.level_8.append (level8_new)
                 self.level_16.append (level16_new)
@@ -435,7 +435,15 @@ class AutoDeeplab (nn.Module) :
             self.device_out[i] = torch.cat([self.device_output[i][0],self.device_output[i][1],self.device_output[i][2],self.device_output[i][3]], 1)
             self.device_out[i] = self.device_conv[i](self.device_out[i])
         device_out=self.device_out
-        return out, device_out
+
+        latency_loss=[0]*7
+        for i in range(7):
+            for j in range(4):
+                latency_loss[i]+=self.latency[i][j]
+            latency_loss[i]*=self.alphas_part[i]
+        total_latency_loss=sum(latency_loss)
+
+        return out, device_out, total_latency_loss
 
     def _initialize_alphas(self):
         k = sum(1 for i in range(self._step) for n in range(2+i))
@@ -679,14 +687,15 @@ class AutoDeeplab (nn.Module) :
         return genotype
 
     def _loss (self, input, target) :
-        logits, device_logits = self (input)
+        logits, device_logits, latency_loss = self (input)
+        lambda_latency=0.01
         device_loss=[]
         weight_part=F.softmax(self.alphas_part, dim = -1)
         for i in range(len(device_logits)):
             device_loss.append(self._criterion(device_logits[i], target) * weight_part[i])
         device_loss=sum(device_loss)
         loss = self._criterion (logits, target)
-        return logits, device_loss*0.5 + loss*0.5        
+        return logits, device_loss*0.5 + loss*0.5 + latency_loss*lambda_latency
 
 
 
