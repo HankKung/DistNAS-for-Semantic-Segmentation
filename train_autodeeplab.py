@@ -45,7 +45,7 @@ class Trainer(object):
         self.criterion = SegmentationLosses(weight=weight, cuda=args.cuda).build_loss(mode=args.loss_type)
 
         # Define network
-        model = AutoDeeplab (self.nclass, 12, self.criterion)
+        model = AutoDeeplab (self.nclass, 12, self.criterion, crop_size=self.args.crop_size, lambda_latency=self.args.lambda_latency)
         optimizer = torch.optim.SGD(
                 model.parameters(),
                 args.lr,
@@ -69,11 +69,13 @@ class Trainer(object):
 
         # Define Evaluator
         self.evaluator = Evaluator(self.nclass)
+        self.evaluator_device = Evaluator(self.nclass)
+
         # Define lr scheduler
         self.scheduler = LR_Scheduler(args.lr_scheduler, args.lr,
                                             args.epochs, len(self.train_loader1))
-
         self.architect = Architect (self.model, args)
+        
         # Resuming checkpoint
         self.best_pred = 0.0
         if args.resume is not None:
@@ -94,42 +96,73 @@ class Trainer(object):
         # Clear start epoch if fine-tuning
         if args.ft:
             args.start_epoch = 0
+    def fetch_arch(self):
+        d=dict()
+        d['alphas_cell'] = self.model.arch_parameters()[0]
+        d['alphas_network'] = self.model.arch_parameters()[1]
+        d['alphas_distributed'] = self.model.arch_parameters()[2]
+        return d
 
     def training(self, epoch):
-        train_loss = 0.0
+        train_la,train_loss = 0.0, 0.0
         self.model.train()
         tbar = tqdm(self.train_loader1)
+        tbar1 = tqdm(self.train_loader1)
+        tbar2 = tqdm(self.train_loader1)
         num_img_tr = len(self.train_loader1)
         for i, sample in enumerate(tbar):
+            
             image, target = sample['image'], sample['label']
             search = next (iter (self.train_loader2))
             image_search, target_search = search['image'], search['label']
             # print ('------------------------begin-----------------------')
             if self.args.cuda:
                 image, target = image.cuda(), target.cuda()
-                image_search, target_search = image_search.cuda (), target_search.cuda () 
+                #image_search, target_search = image_search.cuda (), target_search.cuda () 
                 # print ('cuda finish')
-            #if epoch>19:
-            self.architect.step (image_search, target_search)
+            #if epoch>=20:
+            #self.architect.step (image_search, target_search)
+         #   if i%20==0:
+         #       print(self.model.arch_parameters()[2])
             self.scheduler(self.optimizer, i, epoch, self.best_pred)
             self.optimizer.zero_grad()
-            #if epoch<19:
-                #output, _ = self.model(image)
-                #loss = self.criterion(output, target)
-            #else:
-            output, loss = self.model._loss(image, target)
-            loss.backward()
-            self.optimizer.step()
-            train_loss += loss.item()
-            tbar.set_description('Train loss: %.3f' % (train_loss / (i + 1)))
-            self.writer.add_scalar('train/total_loss_iter', loss.item(), i + num_img_tr * epoch)
-
-            # Show 10 * 3 inference results each epoch
+            
+            output, device_output, loss, la, c_loss, d_loss = self.model._loss(image, target)
             if i % (num_img_tr // 10) == 0:
                 global_step = i + num_img_tr * epoch
-                self.summary.visualize_image(self.writer, self.args.dataset, image, target, output, global_step)
+                self.summary.visualize_image(self.writer, self.args.dataset, image, target, output*0.5+device_output*0.5, global_step)
+            loss.backward()
+            self.optimizer.step()
+            if epoch>=20:
+                image_search, target_search = image_search.cuda (), target_search.cuda ()
+                self.architect.step (image_search, target_search)
+            train_la+=la
+            train_loss += loss.item()
+            tbar.set_description('Train loss: %.3f   Train latency: %.3f' % (train_loss / (i + 1), train_la / (i + 1)))
+            tbar2.set_description('cloud loss:: %.3f   device loss:: %.3f latence loss:: %3f' % (c_loss, d_loss, la))
+            self.writer.add_scalar('train/total_loss_iter', loss.item(), i + num_img_tr * epoch)
+            self.writer.add_scalar('train/cloud_loss_iter', c_loss.item(), i + num_img_tr * epoch)
+            self.writer.add_scalar('train/device_loss_iter', d_loss.item(), i + num_img_tr * epoch)
+            self.writer.add_scalar('train/latency_loss_iter', la.item(), i + num_img_tr * epoch)
 
         self.writer.add_scalar('train/total_loss_epoch', train_loss, epoch)
+        self.writer.add_scalar('train/latency_loss_epoch', train_la, epoch)
+        arch_board=self.model.arch_parameters()[0]
+        for i in range(len(arch_board)):
+            for j in range(len(arch_board[i])):
+                self.writer.add_scalar('cell/'+str(i)+'/'+str(j), arch_board[i][j], epoch)
+
+        arch_board=self.model.arch_parameters()[1]
+        for i in range(len(arch_board)):
+            for j in range(len(arch_board[i])):
+                for k in range(len(arch_board[i][j])):
+                     self.writer.add_scalar('network/'+str(i)+str(j)+str(k), arch_board[i][j][k], epoch)
+
+        arch_board=self.model.arch_parameters()[2]
+        for i in range(len(arch_board)):
+            self.writer.add_scalar('distributed/'+str(i), arch_board[i], epoch)
+
+
         print('[Epoch: %d, numImages: %5d]' % (epoch, i * self.args.batch_size + image.data.shape[0]))
         print('Loss: %.3f' % train_loss)
 
@@ -138,6 +171,7 @@ class Trainer(object):
             is_best = False
             self.saver.save_checkpoint({
                 'epoch': epoch + 1,
+                'arch_para' : self.fetch_arch(),
                 'state_dict': self.model.state_dict(),
                 'optimizer': self.optimizer.state_dict(),
                 'best_pred': self.best_pred,
@@ -149,31 +183,35 @@ class Trainer(object):
         self.evaluator.reset()
         tbar = tqdm(self.val_loader, desc='\r')
         test_loss = 0.0
+        
+        self.evaluator_device.reset()
+
         for i, sample in enumerate(tbar):
             image, target = sample['image'], sample['label']
             if self.args.cuda:
                 image, target = image.cuda(), target.cuda()
             with torch.no_grad():
-                if epoch<19:
-                    output, _ = self.model(image)
-                    loss = self.criterion(output, target)                
-                else:
-                    output, loss = self.model._loss(image, target)    
+                output, device_output, loss, _, _, _ = self.model._loss(image, target)    
             test_loss += loss.item()
             tbar.set_description('Test loss: %.3f' % (test_loss / (i + 1)))
             pred = output.data.cpu().numpy()
             target = target.cpu().numpy()
+            pred_device = device_output.data.cpu().numpy()
+            
             pred = np.argmax(pred, axis=1)
+            pred_device = np.argmax(pred_device, axis=1)
             # Add batch sample into evaluator
             self.evaluator.add_batch(target, pred)
-
+            self.evaluator_device.add_batch(target, pred_device)
         # Fast test during the training
         Acc = self.evaluator.Pixel_Accuracy()
         Acc_class = self.evaluator.Pixel_Accuracy_Class()
         mIoU = self.evaluator.Mean_Intersection_over_Union()
+        mIoU_device = self.evaluator_device.Mean_Intersection_over_Union()
         FWIoU = self.evaluator.Frequency_Weighted_Intersection_over_Union()
         self.writer.add_scalar('val/total_loss_epoch', test_loss, epoch)
-        self.writer.add_scalar('val/mIoU', mIoU, epoch)
+        self.writer.add_scalar('val/mIoU_cloud', mIoU, epoch)
+        self.writer.add_scalar('val/mIoU_device', mIoU_device, epoch)
         self.writer.add_scalar('val/Acc', Acc, epoch)
         self.writer.add_scalar('val/Acc_class', Acc_class, epoch)
         self.writer.add_scalar('val/fwIoU', FWIoU, epoch)
@@ -218,6 +256,8 @@ def main():
     parser.add_argument('--loss_type', type=str, default='ce',
                         choices=['ce', 'focal'],
                         help='loss func type (default: ce)')
+    parser.add_argument('--lambda_latency', type=float, default=0.0004,
+                        help='weight for latency penalty')
     # training hyper params
     parser.add_argument('--epochs', type=int, default=None, metavar='N',
                         help='number of epochs to train (default: auto)')
@@ -316,11 +356,16 @@ def main():
     trainer = Trainer(args)
     print('Starting Epoch:', trainer.args.start_epoch)
     print('Total Epoches:', trainer.args.epochs)
+    torch.backends.cudnn.benchmark = True
     for epoch in range(trainer.args.start_epoch, trainer.args.epochs):
         trainer.training(epoch)
         if not trainer.args.no_val and epoch % args.eval_interval == (args.eval_interval - 1):
             trainer.validation(epoch)
-        print(trainer.model.arch_parameters()[2])
+        if epoch>19:
+            print(trainer.model.arch_parameters()[0][-1])
+            print(trainer.model.arch_parameters()[1][-1])
+            print(trainer.model.arch_parameters()[2])
+        
     trainer.writer.close()
 
 if __name__ == "__main__":
