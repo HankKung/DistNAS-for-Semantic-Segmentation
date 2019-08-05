@@ -7,22 +7,18 @@ from utils import drop_path
 
 class Cell(nn.Module):
 
-  def __init__(self, genotype, C_prev_prev, C_prev, C, reduction, reduction_prev):
+  def __init__(self, genotype, C_prev_prev, C_prev, C, reduction, reduction_prev, rate):
     super(Cell, self).__init__()
     print(C_prev_prev, C_prev, C)
 
-    if reduction_prev:
+    if rate==2:
       self.preprocess0 = FactorizedReduce(C_prev_prev, C)
     else:
       self.preprocess0 = ReLUConvBN(C_prev_prev, C, 1, 1, 0)
     self.preprocess1 = ReLUConvBN(C_prev, C, 1, 1, 0)
     
-    if reduction:
-      op_names, indices = zip(*genotype.reduce)
-      concat = genotype.reduce_concat
-    else:
-      op_names, indices = zip(*genotype.normal)
-      concat = genotype.normal_concat
+    op_names, indices = zip(*genotype.normal)
+    concat = genotype.normal_concat
     self._compile(C, op_names, indices, concat, reduction)
 
   def _compile(self, C, op_names, indices, concat, reduction):
@@ -68,15 +64,29 @@ class Network_Device(nn.Module):
     #self._auxiliary = auxiliary
 
     stem_multiplier = 3
-    C_curr = stem_multiplier*C
+    C_curr = 64
     self.stem = nn.Sequential(
-      nn.Conv2d(3, C_curr, 3, padding=1, bias=False),
-      nn.BatchNorm2d(C_curr)
+      nn.Conv2d(3, C_curr, 3, stride=2, padding=1),
+      nn.BatchNorm2d(C_curr),
+      nn.ReLU ()
     )
-    
-    C_prev_prev, C_prev, C_curr = C_curr, C_curr, C
+
+    self.stem1 = nn.Sequential(
+      nn.Conv2d(64, 64, 3, padding=1),
+      nn.BatchNorm2d(64),
+      nn.ReLU ()
+    )
+    self.stem2 = nn.Sequential(
+      nn.Conv2d(64, 128, 3, stride=2, padding=1),
+      nn.BatchNorm2d(128),
+      nn.ReLU ()
+    )
+
+    C_prev_prev, C_prev, C_curr = 64, 128, C
     self.cells = nn.ModuleList()
     reduction_prev = False
+
+    filter_scale = 1.0
     for i in range(layers):
       if i in [layers//3, 2*layers//3]:
         C_curr *= 2
@@ -107,19 +117,12 @@ class Network_Device(nn.Module):
     logits = self.classifier(out.view(out.size(0),-1))
     return logits
 
-class Network_Cloud(nn.Module):
+class Dist_Network(nn.Module):
 
   def __init__(self, C, num_classes, layers, genotype):
     super(NetworkCIFAR, self).__init__()
     self._layers = layers
     #self._auxiliary = auxiliary
-
-    stem_multiplier = 3
-    C_curr = stem_multiplier*C
-    self.stem = nn.Sequential(
-      nn.Conv2d(3, C_curr, 3, padding=1, bias=False),
-      nn.BatchNorm2d(C_curr)
-    )
     
     C_prev_prev, C_prev, C_curr = C_curr, C_curr, C
     self.cells = nn.ModuleList()
