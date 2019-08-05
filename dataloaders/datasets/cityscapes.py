@@ -37,7 +37,11 @@ class CityscapesSegmentation(data.Dataset):
         self.annotations_base = os.path.join(self.root, 'gtFine', self.split)
 
         if self.split=="train":
-            self.files[split] = part
+            if part==None:
+                self.files[split] = self.recursive_glob(rootdir=self.images_base, suffix='.png')
+
+            else:
+                self.files[split] = part
         else:
             self.files[split] = self.recursive_glob(rootdir=self.images_base, suffix='.png')
         
