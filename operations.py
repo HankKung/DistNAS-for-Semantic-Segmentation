@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 OPS = {
   'none' : lambda C, stride, affine: Zero(stride),
@@ -211,6 +212,18 @@ class Zero(nn.Module):
       return x.mul(0.)
     return x[:,:,::self.stride,::self.stride].mul(0.)
 
+class Resize_bilinear(nn.Module):
+  def __init__(self, C_in, C_out, scale_rate, affine=True):
+    super(resize_bilinear, self).__init__()
+    self._scale_rate=scale_rate
+    self.op = nn.Sequential (
+      nn.ReLU(inplace=False)
+      nn.Conv2d(C_in, C_out, 1, stride=1, padding=0, bias=False)
+      nn.BatchNorm2d(C_out, affine=affine)
+    )
+  def forward(self, x):
+    x=F.interpolate(x, scale_factor=self._scale_rate, mode="bilinear")
+    return self.op (x)
 
 class FactorizedReduce(nn.Module):
 
@@ -229,15 +242,16 @@ class FactorizedReduce(nn.Module):
     return out
 
 class FactorizedIncrease (nn.Module) :
-    def __init__ (self, in_channel, out_channel) :
+    def __init__ (self, in_channel, out_channel, factor=2) :
         super(FactorizedIncrease, self).__init__()
-
+        self.factor = factor
         self._in_channel = in_channel
+        self._out_channel = in_channel//self.factor
         self.op = nn.Sequential (
-            nn.Upsample(scale_factor=2, mode="bilinear"),
+            nn.Upsample(scale_factor=self.factor, mode="bilinear"),
             nn.ReLU(inplace = False),
-            nn.Conv2d(self._in_channel, out_channel, 1, stride=1, padding=0),
-            nn.BatchNorm2d(out_channel)
+            nn.Conv2d(self._in_channel, self._out_channel, 1, stride=1, padding=0),
+            nn.BatchNorm2d(self._out_channel)
         )
     def forward (self, x) :
         return self.op (x)
