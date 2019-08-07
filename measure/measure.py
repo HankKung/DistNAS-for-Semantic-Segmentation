@@ -55,14 +55,14 @@ class measure(nn.Module):
              print(time/50000)
              print(op)
              torch.cuda.synchronize()
-x = torch.cuda.FloatTensor(10, 20, 256, 256).normal_()
+x = torch.cuda.FloatTensor(10, 20, 128, 128).normal_()
 x=x.cuda()
-x1 = torch.cuda.FloatTensor(10, 40, 256, 256).normal_()
+x1 = torch.cuda.FloatTensor(10, 40, 64, 64).normal_()
 x1=x1.cuda()
 
-x2 = torch.cuda.FloatTensor(10, 80, 256, 256).normal_()
+x2 = torch.cuda.FloatTensor(10, 80, 32, 32).normal_()
 x2=x2.cuda()
-x3 = torch.cuda.FloatTensor(10, 160, 256, 256).normal_()
+x3 = torch.cuda.FloatTensor(10, 160, 16, 16).normal_()
 x3=x3.cuda()
 
 model=measure(20)
