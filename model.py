@@ -121,8 +121,10 @@ class ASPP(nn.Module):
 
 class Network_Device(nn.Module):
 
-  def __init__(self, num_classes, layers, genotype, backbone):
+  def __init__(self, num_classes, layers, genotype, backbone, num_classes):
     super(NetworkCIFAR, self).__init__()
+    self.num_classes=num_classes
+    self.aspp_device=ASPP(100*backbone[-1]/4, 256, self.num_classes, mult=1)
     self.stem0 = nn.Sequential(
       nn.Conv2d(3, 64, 3, stride=2, padding=1),
       nn.BatchNorm2d(64),
@@ -159,8 +161,7 @@ class Network_Device(nn.Module):
       self.cells += [cell]
       C_prev_prev, C_prev = C_prev, C_curr
 
-    self.global_pooling = nn.AdaptiveAvgPool2d(1)
-    self.classifier = nn.Linear(C_prev, num_classes)
+
 
   def forward(self, input):
     y = self.stem0(input)
@@ -170,20 +171,24 @@ class Network_Device(nn.Module):
     for i, cell in enumerate(self.cells):
       s0, s1 = s1, cell(s0, s1, self.drop_path_prob)
 
-    out = self.global_pooling(s1)
-    logits = self.classifier(out.view(out.size(0),-1))
-    return logits
+    device_out = self.aspp_device(s1)
+    return s0, s1, device_out
 
 class Dist_Network(nn.Module):
 
-  def __init__(self, C, num_classes, layers, genotype, backbone):
+  def __init__(self, C, num_classes, layers, genotype, backbone_device, backbone_cloud, num_classes):
     super(NetworkCIFAR, self).__init__()
-    
+    self.num_classes=num_classes
+    self._backbone_device=backbone_device
+    self._backbone_cloud=backbone_cloud
+    self.device= Network_Device(num_classes, layers, genotype, self._backbone_device, self.num_classes)
+    self.aspp_cloud=ASPP(100*backbone[-1]/4, 256, self.num_classes, mult=1)
+
     C_prev_prev, C_prev = 64, 128, 
-    self.cells = nn.ModuleList()
+    self.cells_cloud = nn.ModuleList()
     filter_base = 100
     C_curr=filter_base
-    for cell_num in range(len(backbone)):
+    for cell_num in range(len(self._backbone_cloud)):
       rate=1
       if cell_num==0:
         C_curr = filter_base*backbone[0]/4
@@ -196,21 +201,15 @@ class Dist_Network(nn.Module):
           rate = 2
       cell = Cell(genotype, C_prev_prev, C_prev, C_curr, rate)
 
-      self.cells += [cell]
+      self.cells_cloud += [cell]
       C_prev_prev, C_prev = C_prev, C_curr
-
-    self.global_pooling = nn.AdaptiveAvgPool2d(1)
-    self.classifier = nn.Linear(C_prev, num_classes)
 
 
   def forward(self, input):
-    y = self.stem0(input)
-    s0 = self.stem1(y)
-    s1 = self.stem2(s0)
+    device_out, s0, s1 = self.device(input)
 
-    for i, cell in enumerate(self.cells):
+    for i, cell in enumerate(self.cells_cloud):
       s0, s1 = s1, cell(s0, s1, self.drop_path_prob)
 
-    out = self.global_pooling(s1)
-    logits = self.classifier(out.view(out.size(0),-1))
-    return logits
+    cloud_out = self.aspp_cloud(s1)
+    return device_out, cloud_out
