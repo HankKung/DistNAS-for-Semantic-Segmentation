@@ -254,21 +254,54 @@ class AutoDeeplab (nn.Module) :
 
         count = 0
 
+        normalized_betas = [[[0]*3]*4]*12
+        # Softmax on alphas and betas
         if torch.cuda.device_count() > 1:
             img_device = torch.device('cuda', x.get_device())
             normalized_alphas_d = F.softmax(self.alphas_d.to(device=img_device), dim=-1)
             normalized_alphas_c = F.softmax(self.alphas_c.to(device=img_device), dim=-1)
-            normalized_bottom_betas = F.softmax(self.bottom_betas.to(device=img_device), dim=-1)
-            normalized_betas8 = F.softmax(self.betas8.to(device=img_device), dim=-1)
-            normalized_betas16 = F.softmax(self.betas16.to(device=img_device), dim=-1)
-            normalized_top_betas = F.softmax(self.top_betas.to(device=img_device), dim=-1)
+            
+            # normalized_betas[layer][ith node][0 : ➚, 1: ➙, 2 : ➘]
+            for layer in range (len(self.betas)):
+                if layer == 0:
+                    normalized_betas[layer][0][1:] = F.softmax (self.betas[layer][0][1:].to(device=img_device), dim=-1)
+
+                elif layer == 1:
+                    normalized_betas[layer][0][1:] = F.softmax (self.betas[layer][0][1:].to(device=img_device), dim=-1)
+                    normalized_betas[layer][1] = F.softmax (self.betas[layer][1].to(device=img_device), dim=-1)
+
+                elif layer == 2:
+                    normalized_betas[layer][0][1:] = F.softmax (self.betas[layer][0][1:].to(device=img_device), dim=-1)
+                    normalized_betas[layer][1] = F.softmax (self.betas[layer][1].to(device=img_device), dim=-1)
+                    normalized_betas[layer][2] = F.softmax (self.betas[layer][2].to(device=img_device), dim=-1)
+                else :
+                    normalized_betas[layer][0][1:] = F.softmax (self.betas[layer][0][1:].to(device=img_device), dim=-1)
+                    normalized_betas[layer][1] = F.softmax (self.betas[layer][1].to(device=img_device), dim=-1)
+                    normalized_betas[layer][2] = F.softmax (self.betas[layer][2].to(device=img_device), dim=-1)
+                    normalized_betas[layer][3][:1] = F.softmax (self.betas[layer][3][:1].to(device=img_device), dim=-1)
+
         else:
             normalized_alphas_d = F.softmax(self.alphas_d, dim=-1)
             normalized_alphas_c = F.softmax(self.alphas_c, dim=-1)
-            normalized_bottom_betas = F.softmax(self.bottom_betas, dim=-1)
-            normalized_betas8 = F.softmax (self.betas8, dim = -1)
-            normalized_betas16 = F.softmax(self.betas16, dim=-1)
-            normalized_top_betas = F.softmax(self.top_betas, dim=-1)
+
+            for layer in range (len(self.betas)):
+                if layer == 0:
+                    normalized_betas[layer][0][1:] = F.softmax (self.betas[layer][0][1:], dim=-1)
+
+                elif layer == 1:
+                    normalized_betas[layer][0][1:] = F.softmax (self.betas[layer][0][1:], dim=-1)
+                    normalized_betas[layer][1] = F.softmax (self.betas[layer][1], dim=-1)
+
+                elif layer == 2:
+                    normalized_betas[layer][0][1:] = F.softmax (self.betas[layer][0][1:], dim=-1)
+                    normalized_betas[layer][1] = F.softmax (self.betas[layer][1], dim=-1)
+                    normalized_betas[layer][2] = F.softmax (self.betas[layer][2], dim=-1)
+                else :
+                    normalized_betas[layer][0][1:] = F.softmax (self.betas[layer][0][1:], dim=-1)
+                    normalized_betas[layer][1] = F.softmax (self.betas[layer][1], dim=-1)
+                    normalized_betas[layer][2] = F.softmax (self.betas[layer][2], dim=-1)
+                    normalized_betas[layer][3][:1] = F.softmax (self.betas[layer][3][:1], dim=-1)
+
         for layer in range (self._num_layers) :
 
             if layer == 0 :
@@ -276,6 +309,10 @@ class AutoDeeplab (nn.Module) :
                 count += 1
                 level8_new, = self.cells[count] (None, self.level_4[-1], None, None, normalized_alphas_d)
                 count += 1
+
+                level4_new = normalized_betas[layer][0][1] * level4_new
+                level8_new = normalized_betas[layer][0][2] * level8_new
+                
                 self.level_4.append (level4_new)
                 self.level_8.append (level8_new)
 
@@ -286,7 +323,7 @@ class AutoDeeplab (nn.Module) :
                                                                 self.level_8[-1],
                                                                 normalized_alphas_d)
                 count += 1
-                level4_new = normalized_bottom_betas[layer-1][0] * level4_new_1 + normalized_bottom_betas[layer-1][1] * level4_new_2
+                level4_new = normalized_betas[layer][0][1] * level4_new_1 + normalized_betas[layer][1][0] * level4_new_2
 
                 level8_new_1, level8_new_2 = self.cells[count] (None,
                                                                 self.level_4[-1],
@@ -294,14 +331,14 @@ class AutoDeeplab (nn.Module) :
                                                                 None,
                                                                 normalized_alphas_d)
                 count += 1
-                level8_new = normalized_top_betas[layer-1][0] * level8_new_1 + normalized_top_betas[layer-1][1] * level8_new_2
+                level8_new = normalized_betas[layer][0][2] * level8_new_1 + normalized_betas[layer][1][2] * level8_new_2
 
                 level16_new, = self.cells[count] (None,
                                                   self.level_8[-1],
                                                   None,
                                                   None,
                                                   normalized_alphas_d)
-                level16_new = level16_new
+                level16_new = normalized_betas[layer][1][2] * level16_new
                 count += 1
 
 
@@ -316,7 +353,7 @@ class AutoDeeplab (nn.Module) :
                                                                 self.level_8[-1],
                                                                 normalized_alphas_d)
                 count += 1
-                level4_new = normalized_bottom_betas[layer-1][0] * level4_new_1 + normalized_bottom_betas[layer-1][1] * level4_new_2
+                level4_new = normalized_betas[layer][0][1] * level4_new_1 + normalized_betas[layer][1][0] * level4_new_2
 
                 level8_new_1, level8_new_2, level8_new_3 = self.cells[count] (self.level_8[-2],
                                                                               self.level_4[-1],
@@ -324,7 +361,7 @@ class AutoDeeplab (nn.Module) :
                                                                               self.level_16[-1],
                                                                               normalized_alphas_d)
                 count += 1
-                level8_new = normalized_betas8[layer - 2][0] * level8_new_1 + normalized_betas8[layer - 2][1] * level8_new_2 + normalized_betas8[layer - 2][2] * level8_new_3
+                level8_new = normalized_betas[layer][0][2] * level8_new_1 + normalized_betas[layer][1][1] * level8_new_2 + normalized_betas[layer][2][0] * level8_new_3
 
                 level16_new_1, level16_new_2 = self.cells[count] (None,
                                                                   self.level_8[-1],
@@ -332,7 +369,7 @@ class AutoDeeplab (nn.Module) :
                                                                   None,
                                                                   normalized_alphas_d)
                 count += 1
-                level16_new = normalized_top_betas[layer-1][0] * level16_new_1 + normalized_top_betas[layer-1][1] * level16_new_2
+                level16_new = normalized_betas[layer][1][2] * level16_new_1 + normalized_betas[layer][2][1] * level16_new_2
 
 
                 level32_new, = self.cells[count] (None,
@@ -340,7 +377,7 @@ class AutoDeeplab (nn.Module) :
                                                   None,
                                                   None,
                                                   normalized_alphas_d)
-                level32_new = level32_new
+                level32_new = normalized_betas[layer][2][2] * level32_new
                 count += 1
 
                 self.level_4.append (level4_new)
@@ -355,7 +392,7 @@ class AutoDeeplab (nn.Module) :
                                                                 self.level_8[-1],
                                                                 normalized_alphas_d)
                 count += 1
-                level4_new = normalized_bottom_betas[layer-1][0] * level4_new_1 + normalized_bottom_betas[layer-1][1] * level4_new_2
+                level4_new = normalized_betas[layer][0][1] * level4_new_1 + normalized_betas[layer][1][0] * level4_new_2
 
                 level8_new_1, level8_new_2, level8_new_3 = self.cells[count] (self.level_8[-2],
                                                                               self.level_4[-1],
@@ -363,7 +400,7 @@ class AutoDeeplab (nn.Module) :
                                                                               self.level_16[-1],
                                                                               normalized_alphas_d)
                 count += 1
-                level8_new = normalized_betas8[layer - 2][0] * level8_new_1 + normalized_betas8[layer - 2][1] * level8_new_2 + normalized_betas8[layer - 2][2] * level8_new_3
+                level8_new = normalized_betas[layer][0][2] * level8_new_1 + normalized_betas[layer][1][1] * level8_new_2 + normalized_betas[layer][2][0] * level8_new_3
 
                 level16_new_1, level16_new_2, level16_new_3 = self.cells[count] (self.level_16[-2],
                                                                                  self.level_8[-1],
@@ -371,7 +408,7 @@ class AutoDeeplab (nn.Module) :
                                                                                  self.level_32[-1],
                                                                                  normalized_alphas_d)
                 count += 1
-                level16_new = normalized_betas16[layer - 3][0] * level16_new_1 + normalized_betas16[layer - 3][1] * level16_new_2 + normalized_betas16[layer - 3][2] * level16_new_3
+                level16_new = normalized_betas[layer][1][2] * level16_new_1 + normalized_betas[layer][2][1] * level16_new_2 + normalized_betas[layer][3][0] * level16_new_3
 
 
                 level32_new_1, level32_new_2 = self.cells[count] (None,
@@ -380,7 +417,7 @@ class AutoDeeplab (nn.Module) :
                                                                   None,
                                                                   normalized_alphas_d)
                 count += 1
-                level32_new = normalized_top_betas[layer-1][0] * level32_new_1 + normalized_top_betas[layer-1][1] * level32_new_2
+                level32_new = normalized_betas[layer][2][2] * level32_new_1 + normalized_betas[layer][3][1] * level32_new_2
 
 
                 self.level_4.append (level4_new)
@@ -396,7 +433,7 @@ class AutoDeeplab (nn.Module) :
                                                                 self.level_8[-1],
                                                                 normalized_alphas_d)
                 count += 1
-                level4_new = normalized_bottom_betas[layer-1][0] * level4_new_1 + normalized_bottom_betas[layer-1][1] * level4_new_2
+                level4_new = normalized_betas[layer][0][1] * level4_new_1 + normalized_betas[layer][1][0] * level4_new_2
 
                 level8_new_1, level8_new_2, level8_new_3 = self.cells[count] (self.level_8[-2],
                                                                               self.level_4[-1],
@@ -404,7 +441,7 @@ class AutoDeeplab (nn.Module) :
                                                                               self.level_16[-1],
                                                                               normalized_alphas_d)
                 count += 1
-                level8_new = normalized_betas8[layer - 2][0] * level8_new_1 + normalized_betas8[layer - 2][1] * level8_new_2 + normalized_betas8[layer - 2][2] * level8_new_3
+                level8_new = normalized_betas[layer][0][2] * level8_new_1 + normalized_betas[layer][1][1] * level8_new_2 + normalized_betas[layer][2][0] * level8_new_3
 
                 level16_new_1, level16_new_2, level16_new_3 = self.cells[count] (self.level_16[-2],
                                                                                  self.level_8[-1],
@@ -412,7 +449,7 @@ class AutoDeeplab (nn.Module) :
                                                                                  self.level_32[-1],
                                                                                  normalized_alphas_d)
                 count += 1
-                level16_new = normalized_betas16[layer - 3][0] * level16_new_1 + normalized_betas16[layer - 3][1] * level16_new_2 + normalized_betas16[layer - 3][2] * level16_new_3
+                level16_new = normalized_betas[layer][1][2] * level16_new_1 + normalized_betas[layer][2][1] * level16_new_2 + normalized_betas[layer][3][0] * level16_new_3
 
 
                 level32_new_1, level32_new_2 = self.cells[count] (self.level_32[-2],
@@ -421,7 +458,7 @@ class AutoDeeplab (nn.Module) :
                                                                   None,
                                                                   normalized_alphas_d)
                 count += 1
-                level32_new = normalized_top_betas[layer-1][0] * level32_new_1 + normalized_top_betas[layer-1][1] * level32_new_2
+                level32_new = normalized_betas[layer][2][2] * level32_new_1 + normalized_betas[layer][3][1] * level32_new_2
 
 
                 self.level_4.append (level4_new)
@@ -437,7 +474,7 @@ class AutoDeeplab (nn.Module) :
                                                                 self.level_8[-1],
                                                                 normalized_alphas_c)
                 count += 1
-                level4_new = normalized_bottom_betas[layer-1][0] * level4_new_1 + normalized_bottom_betas[layer-1][1] * level4_new_2
+                level4_new = normalized_betas[layer][0][1] * level4_new_1 + normalized_betas[layer][1][0] * level4_new_2
                 
                 device_8_new = self.aspp_device_8(self.level_8[-1])
                 level8_new_1, level8_new_2, level8_new_3 = self.cells[count] (self.level_8[-2],
@@ -447,7 +484,7 @@ class AutoDeeplab (nn.Module) :
                                                                               normalized_alphas_c)
                 count += 1
 
-                level8_new = normalized_betas8[layer - 2][0] * level8_new_1 + normalized_betas8[layer - 2][1] * level8_new_2 + normalized_betas8[layer - 2][2] * level8_new_3
+                level8_new = normalized_betas[layer][0][2] * level8_new_1 + normalized_betas[layer][1][1] * level8_new_2 + normalized_betas[layer][2][0] * level8_new_3
 
                 device_16_new = self.aspp_device_16(self.level_16[-1])
                 level16_new_1, level16_new_2, level16_new_3 = self.cells[count] (self.level_16[-2],
@@ -456,7 +493,7 @@ class AutoDeeplab (nn.Module) :
                                                                                  self.level_32[-1],
                                                                                  normalized_alphas_c)
                 count += 1
-                level16_new = normalized_betas16[layer - 3][0] * level16_new_1 + normalized_betas16[layer - 3][1] * level16_new_2 + normalized_betas16[layer - 3][2] * level16_new_3
+                level16_new = normalized_betas[layer][1][2] * level16_new_1 + normalized_betas[layer][2][1] * level16_new_2 + normalized_betas[layer][3][0] * level16_new_3
 
                 device_32_new = self.aspp_device_32(self.level_32[-1])
                 level32_new_1, level32_new_2 = self.cells[count] (self.level_32[-2],
@@ -465,7 +502,7 @@ class AutoDeeplab (nn.Module) :
                                                                   None,
                                                                   normalized_alphas_c)
                 count += 1
-                level32_new = normalized_top_betas[layer-1][0] * level32_new_1 + normalized_top_betas[layer-1][1] * level32_new_2
+                level32_new = normalized_betas[layer][2][2] * level32_new_1 + normalized_betas[layer][3][1] * level32_new_2
 
 
                 self.level_4.append (level4_new)
@@ -480,7 +517,7 @@ class AutoDeeplab (nn.Module) :
                                                                 self.level_8[-1],
                                                                 normalized_alphas_c)
                 count += 1
-                level4_new = normalized_bottom_betas[layer-1][0] * level4_new_1 + normalized_bottom_betas[layer-1][1] * level4_new_2
+                level4_new = normalized_betas[layer][0][1] * level4_new_1 + normalized_betas[layer][1][0] * level4_new_2
 
                 level8_new_1, level8_new_2, level8_new_3 = self.cells[count] (self.level_8[-2],
                                                                               self.level_4[-1],
@@ -489,7 +526,7 @@ class AutoDeeplab (nn.Module) :
                                                                               normalized_alphas_c)
                 count += 1
 
-                level8_new = normalized_betas8[layer - 2][0] * level8_new_1 + normalized_betas8[layer - 2][1] * level8_new_2 + normalized_betas8[layer - 2][2] * level8_new_3
+                level8_new = normalized_betas[layer][0][2] * level8_new_1 + normalized_betas[layer][1][1] * level8_new_2 + normalized_betas[layer][2][0] * level8_new_3
 
                 level16_new_1, level16_new_2, level16_new_3 = self.cells[count] (self.level_16[-2],
                                                                                  self.level_8[-1],
@@ -497,7 +534,7 @@ class AutoDeeplab (nn.Module) :
                                                                                  self.level_32[-1],
                                                                                  normalized_alphas_c)
                 count += 1
-                level16_new = normalized_betas16[layer - 3][0] * level16_new_1 + normalized_betas16[layer - 3][1] * level16_new_2 + normalized_betas16[layer - 3][2] * level16_new_3
+                level16_new = normalized_betas[layer][1][2] * level16_new_1 + normalized_betas[layer][2][1] * level16_new_2 + normalized_betas[layer][3][0] * level16_new_3
 
 
                 level32_new_1, level32_new_2 = self.cells[count] (self.level_32[-2],
@@ -506,7 +543,7 @@ class AutoDeeplab (nn.Module) :
                                                                   None,
                                                                   normalized_alphas_c)
                 count += 1
-                level32_new = normalized_top_betas[layer-1][0] * level32_new_1 + normalized_top_betas[layer-1][1] * level32_new_2
+                level32_new = normalized_betas[layer][2][2] * level32_new_1 + normalized_betas[layer][3][1] * level32_new_2
 
 
                 self.level_4.append (level4_new)
@@ -546,36 +583,28 @@ class AutoDeeplab (nn.Module) :
         num_ops = len(PRIMITIVES)
         alphas_d = torch.tensor (1e-3*torch.randn(k_d, num_ops).cuda(), requires_grad=True)
         alphas_c = torch.tensor (1e-3*torch.randn(k_c, num_ops).cuda(), requires_grad=True)
-        bottom_betas = torch.tensor (1e-3 * torch.randn(self._num_layers - 1, 2).cuda(), requires_grad=True)
-        betas8 = torch.tensor (1e-3 * torch.randn(self._num_layers - 2, 3).cuda(), requires_grad=True)
-        betas16 = torch.tensor(1e-3 * torch.randn(self._num_layers - 3, 3).cuda(), requires_grad=True)
-        top_betas = torch.tensor (1e-3 * torch.randn(self._num_layers - 1, 2).cuda(), requires_grad=True)
+        betas = torch.tensor (1e-3*torch.randn(12, 4, 3).cuda(), requires_grad=True)
 
         self._arch_parameters = [
             alphas_d,
             alphas_c,
-            bottom_betas,
-            betas8,
-            betas16,
-            top_betas,
-        ]
+            betas,
+            ]
         self._arch_param_names = [
             'alphas_d',
             'alphas_c',
-            'bottom_betas',
-            'betas8',
-            'betas16',
-            'top_betas']
+            'betas',
+            ]
 
         [self.register_parameter(name, torch.nn.Parameter(param)) for name, param in zip(self._arch_param_names, self._arch_parameters)]
 
-    def decode_viterbi(self):
-        decoder = Decoder(self.bottom_betas, self.betas8, self.betas16, self.top_betas)
-        return decoder.viterbi_decode()
+    # def decode_viterbi(self):
+    #     decoder = Decoder(self.bottom_betas, self.betas8, self.betas16, self.top_betas)
+    #     return decoder.viterbi_decode()
 
-    def decode_dfs(self):
-        decoder = Decoder(self.bottom_betas, self.betas8, self.betas16, self.top_betas)
-        return decoder.dfs_decode()
+    # def decode_dfs(self):
+    #     decoder = Decoder(self.bottom_betas, self.betas8, self.betas16, self.top_betas)
+    #     return decoder.dfs_decode()
 
     def arch_parameters (self) :
         return [param for name, param in self.named_parameters() if name in self._arch_param_names]
