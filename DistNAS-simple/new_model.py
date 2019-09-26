@@ -90,9 +90,11 @@ class Cell(nn.Module):
 
 
 class new_device_Model (nn.Module):
-    def __init__(self, network_arch, cell_arch, num_classes, num_layers, criterion=None, filter_multiplier=20, block_multiplier=4, step=4, cell=Cell, full_net='deeplab_v3+'):
+    def __init__(self, network_arch, cell_arch, num_classes, num_layers, \
+        criterion=None, filter_multiplier=20, block_multiplier=4, step=4, \
+        cell=Cell, full_net='deeplab_v3+'):
         super(new_device_Model, self).__init__()
-
+        
         self.cells = nn.ModuleList()
         self.network_arch = network_arch
         self.cell_arch = torch.from_numpy(cell_arch)
@@ -179,24 +181,25 @@ class new_device_Model (nn.Module):
         return last_output
 
 class new_cloud_Model (nn.Module):
-    def __init__(self, network_arch, cell_arch, num_classes, device_num_layers, \
-        criterion=None, filter_multiplier=20, block_multiplier=5, step=5, \
+    def __init__(self, network_arch, cell_arch_d, cell_arch_c, num_classes, \
+        device_num_layers, \
+        criterion=None, filter_multiplier=20, block_multiplier_c=5, step_c=5, \
         block_multiplier_d=4, step_d=4, cell=Cell, full_net='deeplab_v3+'):
         super(new_cloud_Model, self).__init__()
 
         self.cells = nn.ModuleList()
         self.network_arch = network_arch[device_num_layers:]
-        self.cell_arch = torch.from_numpy(cell_arch)
+        self.cell_arch_c = torch.from_numpy(cell_arch)
         self._num_layers = len(self.network_arch)
         self._num_classes = num_classes
-        self._step = step
-        self._block_multiplier = block_multiplier
+        self._step = step_c
+        self._block_multiplier = block_multiplier_c
         self._filter_multiplier = filter_multiplier
         self._criterion = criterion
         self._full_net = full_net
 
         device_layer = network_arch[:device_num_layers]
-        self.device = new_device_Model(device_layer, cell_arch, num_classes, device_num_layers \
+        self.device = new_device_Model(device_layer, cell_arch_d, num_classes, device_num_layers \
             block_multiplier=block_multiplier_d, step=step_d)
 
         #C_prev_prev = 64

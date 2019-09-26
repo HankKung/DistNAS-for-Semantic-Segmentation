@@ -30,19 +30,22 @@ class trainNew(object):
         kwargs = {'num_workers': args.workers, 'pin_memory': True}
         self.train_loader, self.val_loader, self.test_loader, self.nclass = make_data_loader(args, **kwargs)
 
-        cell_path = os.path.join(args.saved_arch_path, 'genotype.npy')
+        cell_path_d = os.path.join(args.saved_arch_path, 'genotype_device.npy')
+        cell_path_c = os.path.join(args.saved_arch_path, 'genotype_cloud.npy')
         network_path_space = os.path.join(args.saved_arch_path, 'network_path_space.npy')
 
-        new_cell_arch = np.load(cell_path)
+        new_cell_arch_d = np.load(cell_path_d)
+        new_cell_arch_c = np.load(cell_path_c)
         new_network_arch = np.load(network_path_space)
 
-        new_cell_arch = [(7,1), (4,0), (4,1), (6,0), (4,3), (4,1), (5,4), (5,2), (5,3), (7,5)]
+        # new_cell_arch = [(7,1), (4,0), (4,1), (6,0), (4,3), (4,1), (5,4), (5,2), (5,3), (7,5)]
         new_cell_arch = np.array(new_cell_arch)
-        new_network_arch = [0, 0, 0, 1, 2, 1, 2, 2, 3, 3, 2, 1]
+        # new_network_arch = [0, 0, 0, 1, 2, 1, 2, 2, 3, 3, 2, 1]
 
         # Define network
         model = newModel(network_arch= new_network_arch,
-                         cell_arch = new_cell_arch,
+                         new_cell_arch_d = new_cell_arch_d,
+                         new_cell_arch_c = new_cell_arch_c,
                          num_classes=self.nclass,
                          device_num_layers=6)
 #                        output_stride=args.out_stride,

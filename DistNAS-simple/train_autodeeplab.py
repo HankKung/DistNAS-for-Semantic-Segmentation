@@ -17,6 +17,7 @@ from utils.summaries import TensorboardSummary
 from utils.metrics import Evaluator
 from auto_deeplab import AutoDeeplab
 from architect import Architect
+from utils.copy_state_dict import copy_state_dict
 # import apex
 # try:
 #     from apex import amp
