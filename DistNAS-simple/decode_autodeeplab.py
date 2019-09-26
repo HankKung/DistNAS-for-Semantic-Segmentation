@@ -60,12 +60,9 @@ class Loader(object):
                 else:
                     self.model.load_state_dict(checkpoint['state_dict'])
 
-        self.decoder = Decoder(self.model.alphas,
-                               self.model.bottom_betas,
-                               self.model.betas8,
-                               self.model.betas16,
-                               self.model.top_betas,
-                               args.block_multiplier,
+        self.decoder = Decoder(self.model.alphas_d,
+                               self.model.alphas_c,
+                               self.model.betas,
                                args.step)
 
     def retreive_alphas_betas(self):
@@ -76,8 +73,8 @@ class Loader(object):
         return paths, paths_space
 
     def decode_cell(self):
-        genotype = self.decoder.genotype_decode()
-        return genotype
+        genotype_d, genotype_c = self.decoder.genotype_decode()
+        return genotype_d, genotype_c
 
 
 def get_new_network_cell() :
@@ -118,7 +115,7 @@ def get_new_network_cell() :
     result_paths, result_paths_space = load_model.decode_architecture()
     network_path = result_paths.numpy()
     network_path_space = result_paths_space.numpy()
-    genotype = load_model.decode_cell()
+    genotype_d, genotype_c = load_model.decode_cell()
 
     print ('architecture search results:',network_path)
     print ('new cell structure:', genotype)
@@ -126,10 +123,14 @@ def get_new_network_cell() :
     dir_name = os.path.dirname(args.resume)
     network_path_filename = os.path.join(dir_name,'network_path')
     network_path_space_filename = os.path.join(dir_name, 'network_path_space')
-    genotype_filename = os.path.join(dir_name, 'genotype')
+    genotype_filename_d = os.path.join(dir_name, 'genotype_device')
+    genotype_filename_c = os.path.join(dir_name, 'genotype_cloud')
+
     np.save(network_path_filename, network_path)
     np.save(network_path_space_filename, network_path_space)
-    np.save(genotype_filename, genotype)
+    np.save(genotype_filename_d, genotype_d)
+    np.save(genotype_filename_c, genotype_c)
+
 
     print('saved to :', dir_name)
 

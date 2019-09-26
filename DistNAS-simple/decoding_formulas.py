@@ -25,9 +25,10 @@ def network_layer_to_space(net_arch):
 
 
 class Decoder(object):
-    def __init__(self, alphas, betas, steps):
+    def __init__(self, alphas_d, alphas_c, betas, steps):
         self._betas = betas
-        self._alphas = alphas
+        self._alphas_d = alphas_d
+        self._alphas_c = alphas_c
         self._steps = steps
         self._num_layers = len(self._betas)
         self.network_space = torch.zeros(12, 4, 3)
@@ -296,7 +297,10 @@ class Decoder(object):
                 n += 1
             return np.array(gene)
 
-        normalized_alphas = F.softmax(self.alphas, dim=-1).data.cpu().numpy()
-        gene_cell = _parse(normalized_alphas, self.steps)
+        normalized_alphas_d = F.softmax(self.alphas_d, dim=-1).data.cpu().numpy()
+        normalized_alphas_c = F.softmax(self.alphas_c, dim=-1).data.cpu().numpy()
 
-        return gene_cell
+        gene_cell_d = _parse(normalized_alphas_d, 4)
+        gene_cell_c = _parse(normalized_alphas_c, 5)
+
+        return gene_cell_d, gene_cell_c

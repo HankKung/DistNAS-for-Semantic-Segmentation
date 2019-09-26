@@ -331,7 +331,7 @@ class AutoDeeplab (nn.Module) :
                                                                 None,
                                                                 normalized_alphas_d)
                 count += 1
-                level8_new = normalized_betas[layer][0][2] * level8_new_1 + normalized_betas[layer][1][2] * level8_new_2
+                level8_new = normalized_betas[layer][0][2] * level8_new_1 + normalized_betas[layer][1][1] * level8_new_2
 
                 level16_new, = self.cells[count] (None,
                                                   self.level_8[-1],
@@ -598,13 +598,13 @@ class AutoDeeplab (nn.Module) :
 
         [self.register_parameter(name, torch.nn.Parameter(param)) for name, param in zip(self._arch_param_names, self._arch_parameters)]
 
-    # def decode_viterbi(self):
-    #     decoder = Decoder(self.bottom_betas, self.betas8, self.betas16, self.top_betas)
-    #     return decoder.viterbi_decode()
+    def decode_viterbi(self):
+        decoder = Decoder(self.bottom_betas, self.betas8, self.betas16, self.top_betas)
+        return decoder.viterbi_decode()
 
-    # def decode_dfs(self):
-    #     decoder = Decoder(self.bottom_betas, self.betas8, self.betas16, self.top_betas)
-    #     return decoder.dfs_decode()
+    def decode_dfs(self):
+        decoder = Decoder(self.bottom_betas, self.betas8, self.betas16, self.top_betas)
+        return decoder.dfs_decode()
 
     def arch_parameters (self) :
         return [param for name, param in self.named_parameters() if name in self._arch_param_names]

@@ -314,9 +314,9 @@ def main():
     parser.add_argument('--clean-module', type=int, default=0)
     parser.add_argument('--workers', type=int, default=0,
                         metavar='N', help='dataloader threads')
-    parser.add_argument('--base_size', type=int, default=320,
+    parser.add_argument('--base_size', type=int, default=512,
                         help='base image size')
-    parser.add_argument('--crop_size', type=int, default=320,
+    parser.add_argument('--crop_size', type=int, default=321,
                         help='crop image size')
     parser.add_argument('--resize', type=int, default=512,
                         help='resize image size')
