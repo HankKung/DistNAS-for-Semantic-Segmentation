@@ -13,7 +13,7 @@ from utils.lr_scheduler import LR_Scheduler
 from utils.saver import Saver
 from utils.summaries import TensorboardSummary
 from utils.metrics import Evaluator
-from new_model import newModel
+from new_model import *
 
 class trainNew(object):
     def __init__(self, args):
@@ -37,21 +37,17 @@ class trainNew(object):
         new_cell_arch_d = np.load(cell_path_d)
         new_cell_arch_c = np.load(cell_path_c)
         new_network_arch = np.load(network_path_space)
-
-        # new_cell_arch = [(7,1), (4,0), (4,1), (6,0), (4,3), (4,1), (5,4), (5,2), (5,3), (7,5)]
-        new_cell_arch = np.array(new_cell_arch)
-        # new_network_arch = [0, 0, 0, 1, 2, 1, 2, 2, 3, 3, 2, 1]
-
+        new_network_arch = [1, 2, 3, 2, 3, 2, 3, 2, 3, 2, 3, 2]
         # Define network
-        model = newModel(network_arch= new_network_arch,
-                         new_cell_arch_d = new_cell_arch_d,
-                         new_cell_arch_c = new_cell_arch_c,
+        model = new_cloud_Model(network_arch= new_network_arch,
+                         cell_arch_d = new_cell_arch_d,
+                         cell_arch_c = new_cell_arch_c,
                          num_classes=self.nclass,
                          device_num_layers=6)
 #                        output_stride=args.out_stride,
 #                        sync_bn=args.sync_bn,
 #                        freeze_bn=args.freeze_bn)
-        self.decoder = Decoder(self.nclass, 'autodeeplab', args, False)
+        #self.decoder = Decoder(self.nclass, 'autodeeplab', args, False)
         # TODO: look into these
         # TODO: ALSO look into different param groups as done int deeplab below
 #        train_params = [{'params': model.get_1x_lr_params(), 'lr': args.lr},
@@ -77,7 +73,8 @@ class trainNew(object):
         self.model, self.optimizer = model, optimizer
 
         # Define Evaluator
-        self.evaluator = Evaluator(self.nclass)
+        self.evaluator_device = Evaluator(self.nclass)
+        self.evaluator_cloud = Evaluator(self.nclass)
         # Define lr scheduler
         self.scheduler = LR_Scheduler(args.lr_scheduler, args.lr,
                                       args.epochs, len(self.train_loader)) #TODO: use min_lr ?
@@ -136,17 +133,21 @@ class trainNew(object):
                 image, target = image.cuda(), target.cuda()
             self.scheduler(self.optimizer, i, epoch, self.best_pred)
             self.optimizer.zero_grad()
-            encoder_output, low_level_feature = self.model(image)
-            output = self.decoder(encoder_output, low_level_feature)
-            loss = self.criterion(output, target)
+            device_output, cloud_output = self.model(image)
+            
+            device_loss = self.criterion(device_output, target)
+            cloud_loss = self.criterion(cloud_output, target)
+            loss = device_loss + cloud_loss
             loss.backward()
             self.optimizer.step()
             train_loss += loss.item()
             tbar.set_description('Train loss: %.3f' % (train_loss / (i + 1)))
-            self.writer.add_scalar('train/total_loss_iter', loss.item(), i + num_img_tr * epoch)
+            if i %50 == 0:
+                self.writer.add_scalar('train/total_loss_iter', loss.item(), i + num_img_tr * epoch)
 
             # Show 10 * 3 inference results each epoch
-            if i % (num_img_tr // 10) == 0:
+            if i % 100 == 0:
+                output = (device_output + cloud_output)/2
                 global_step = i + num_img_tr * epoch
                 self.summary.visualize_image(self.writer, self.args.dataset, image, target, output, global_step)
 
@@ -166,7 +167,8 @@ class trainNew(object):
 
     def validation(self, epoch):
         self.model.eval()
-        self.evaluator.reset()
+        self.evaluator_device.reset()
+        self.evaluator_cloud.reset()
         tbar = tqdm(self.val_loader, desc='\r')
         test_loss = 0.0
         for i, sample in enumerate(tbar):
@@ -174,33 +176,39 @@ class trainNew(object):
             if self.args.cuda:
                 image, target = image.cuda(), target.cuda()
             with torch.no_grad():
-                encoder_output, low_level_feature = self.model(image)
-                output = self.decoder(encoder_output, low_level_feature)
-            loss = self.criterion(output, target)
+                device_output, cloud_output = self.model(image)
+            device_loss = self.criterion(device_output, target)
+            cloud_loss = self.criterion(cloud_output, target)
+            loss = device_loss + cloud_loss
             test_loss += loss.item()
             tbar.set_description('Test loss: %.3f' % (test_loss / (i + 1)))
-            pred = output.data.cpu().numpy()
+            pred_d = device_output.data.cpu().numpy()
+            pred_c = cloud_output.data.cpu().numpy()
             target = target.cpu().numpy()
-            pred = np.argmax(pred, axis=1)
+            pred_d = np.argmax(pred_d, axis=1)
+            pred_c = np.argmax(pred_c, axis=1)
             # Add batch sample into evaluator
-            self.evaluator.add_batch(target, pred)
+            self.evaluator_device.add_batch(target, pred_d)
+            self.evaluator_cloud.add_batch(target, pred_c)
 
         # Fast test during the training
-        Acc = self.evaluator.Pixel_Accuracy()
-        Acc_class = self.evaluator.Pixel_Accuracy_Class()
-        mIoU = self.evaluator.Mean_Intersection_over_Union()
-        FWIoU = self.evaluator.Frequency_Weighted_Intersection_over_Union()
+       # Acc = self.evaluator.Pixel_Accuracy()
+       # Acc_class = self.evaluator.Pixel_Accuracy_Class()
+        mIoU_d = self.evaluator_device.Mean_Intersection_over_Union()
+        mIoU_c = self.evaluator_cloud.Mean_Intersection_over_Union()
+       # FWIoU = self.evaluator.Frequency_Weighted_Intersection_over_Union()
         self.writer.add_scalar('val/total_loss_epoch', test_loss, epoch)
-        self.writer.add_scalar('val/mIoU', mIoU, epoch)
-        self.writer.add_scalar('val/Acc', Acc, epoch)
-        self.writer.add_scalar('val/Acc_class', Acc_class, epoch)
-        self.writer.add_scalar('val/fwIoU', FWIoU, epoch)
+        self.writer.add_scalar('val/device/mIoU', mIoU_d, epoch)
+        self.writer.add_scalar('val/cloud/mIoU', mIoU_c, epoch)
+       # self.writer.add_scalar('val/Acc', Acc, epoch)
+       # self.writer.add_scalar('val/Acc_class', Acc_class, epoch)
+       # self.writer.add_scalar('val/fwIoU', FWIoU, epoch)
         print('Validation:')
         print('[Epoch: %d, numImages: %5d]' % (epoch, i * self.args.batch_size + image.data.shape[0]))
-        print("Acc:{}, Acc_class:{}, mIoU:{}, fwIoU: {}".format(Acc, Acc_class, mIoU, FWIoU))
+        print("device_mIoU:{}, cloud_mIoU: {}".format(mIoU_d, mIoU_c))
         print('Loss: %.3f' % test_loss)
 
-        new_pred = mIoU
+        new_pred = (mIoU_d + mIoU_c)/2
         if new_pred > self.best_pred:
             is_best = True
             self.best_pred = new_pred
@@ -214,7 +222,7 @@ class trainNew(object):
 def main():
     parser = argparse.ArgumentParser(description="PyTorch DeeplabV3Plus Training")
     parser.add_argument('--backbone', type=str, default='resnet',
-                        choices=['resnet', 'xception', 'drn', 'mobilenet'],
+                        choices=['resnet', 'xception', 'drn', 'mobilenet', 'autodeeplab'],
                         help='backbone name (default: resnet)')
     parser.add_argument('--out-stride', type=int, default=16,
                         help='network output stride (default: 8)')
@@ -308,7 +316,7 @@ def main():
     if args.epochs is None:
         epoches = {
             'coco': 30,
-            'cityscapes': 200,
+            'cityscapes': 4500,
             'pascal': 50,
         }
         args.epochs = epoches[args.dataset.lower()]

@@ -18,7 +18,7 @@ class Cell(nn.Module):
     def __init__(self, steps, block_multiplier, prev_prev_fmultiplier,
                  prev_filter_multiplier,
                  cell_arch, network_arch,
-                 filter_multiplier, downup_sample):
+                 filter_multiplier, downup_sample, prev_prev_block=0):
 
         super(Cell, self).__init__()
         self.cell_arch = cell_arch
@@ -26,7 +26,10 @@ class Cell(nn.Module):
         self.C_in = block_multiplier * filter_multiplier
         self.C_out = filter_multiplier
         self.C_prev = int(block_multiplier * prev_filter_multiplier)
-        self.C_prev_prev = int(block_multiplier * prev_prev_fmultiplier)
+        if prev_prev_block != 0:
+            self.C_prev_prev = int(prev_prev_block * prev_prev_fmultiplier)
+        else:
+            self.C_prev_prev = int(block_multiplier * prev_prev_fmultiplier)
         self.downup_sample = downup_sample
         self.pre_preprocess = ReLUConvBN(
             self.C_prev_prev, self.C_out, 1, 1, 0, affine=True)
@@ -63,7 +66,8 @@ class Cell(nn.Module):
         s0 = self.pre_preprocess(prev_prev_input) if (
             prev_prev_input.shape[1] != self.C_out) else prev_prev_input
         s1 = self.preprocess(prev_input)
-
+        #print(s0.shape)
+        #print(s1.shape)
         states = [s0, s1]
         # print(s1.shape)
         offset = 0
@@ -131,8 +135,20 @@ class new_device_Model (nn.Module):
             prev_level = network_arch[i-1]
             prev_prev_level = network_arch[i-2]
 
+#            print(self.network_arch[i])
+ #           level_option = torch.sum(self.network_arch[i], dim=1)
+  #          prev_level_option = torch.sum(self.network_arch[i-1], dim=1)
+   #         prev_prev_level_option = torch.sum(
+    #            self.network_arch[i-2], dim=1)
+     #       level = torch.argmax(level_option).item()
+      #      prev_level = torch.argmax(prev_level_option).item()
+       #     prev_prev_level = torch.argmax(prev_prev_level_option).item()
+
+
             if i == 0:
-                downup_sample = 0
+                #downup_sample = 0
+                downup_sample = -1
+                
                 _cell = cell(self._step, self._block_multiplier, ini_initial_fm / block_multiplier,
                              initial_fm / block_multiplier,
                              self.cell_arch, self.network_arch[i],
@@ -145,29 +161,34 @@ class new_device_Model (nn.Module):
                 if i == 1:
                     _cell = cell(self._step, self._block_multiplier,
                                  initial_fm / block_multiplier,
-                                 self._filter_multiplier * 1,
+                                 self._filter_multiplier * 2,
                                  self.cell_arch, self.network_arch[i],
                                  self._filter_multiplier *
                                  filter_param_dict[level],
                                  downup_sample)
                 else:
+                    downup_sample = int(prev_level - level)
                     _cell = cell(self._step, self._block_multiplier, self._filter_multiplier * filter_param_dict[prev_prev_level],
                                  self._filter_multiplier *
                                  filter_param_dict[prev_level],
                                  self.cell_arch, self.network_arch[i],
                                  self._filter_multiplier *
                                  filter_param_dict[level], downup_sample)
-
+            print(_cell)
             self.cells += [_cell]
 
-        self.aspp = ASPP_train('autodeeplab', 4*filter_param_dict[self.network_arch[-1]])  # 96 / 4 as in the paper
+        self.aspp = ASPP_train(20*4*filter_param_dict[self.network_arch[-1]], 256, num_classes)  # 96 / 4 as in the paper
 
     def forward(self, x):
         stem = self.stem0(x)
         stem0 = self.stem1(stem)
         stem1 = self.stem2(stem0)
+        stem = 0
         two_last_inputs = (stem0, stem1)
         for i in range(self._num_layers):
+            #print(i)
+            #print(two_last_inputs[0].shape)
+            #print(two_last_inputs[1].shape)
             two_last_inputs = self.cells[i](
                 two_last_inputs[0], two_last_inputs[1])
             
@@ -178,7 +199,7 @@ class new_device_Model (nn.Module):
             
             # return aspp_result
         # else:
-        return last_output
+        return  two_last_inputs, aspp_result
 
 class new_cloud_Model (nn.Module):
     def __init__(self, network_arch, cell_arch_d, cell_arch_c, num_classes, \
@@ -188,76 +209,118 @@ class new_cloud_Model (nn.Module):
         super(new_cloud_Model, self).__init__()
 
         self.cells = nn.ModuleList()
+       # self.network_arch = torch.from_numpy(network_arch)
         self.network_arch = network_arch[device_num_layers:]
-        self.cell_arch_c = torch.from_numpy(cell_arch)
+        self.cell_arch_c = torch.from_numpy(cell_arch_c)
         self._num_layers = len(self.network_arch)
         self._num_classes = num_classes
         self._step = step_c
-        self._block_multiplier = block_multiplier_c
+        self._block_multiplier_c = block_multiplier_c
+        self._block_multiplier_d = block_multiplier_d
         self._filter_multiplier = filter_multiplier
         self._criterion = criterion
         self._full_net = full_net
 
+#        device_layer = torch.from_numpy(network_arch)
         device_layer = network_arch[:device_num_layers]
         self.device = new_device_Model(device_layer, cell_arch_d, num_classes, device_num_layers \
-            block_multiplier=block_multiplier_d, step=step_d)
-
+            ,block_multiplier=block_multiplier_d, step=step_d)
+        self._num_layers = 12 - len(device_layer)     
+   
         #C_prev_prev = 64
         filter_param_dict = {0: 1, 1: 2, 2: 4, 3: 8}
         for i in range(self._num_layers):
 
-            level = network_arch[i]
-            prev_level = network_arch[i-1]
-            prev_prev_level = network_arch[i-2]
+            level = self.network_arch[i]
+            prev_level = self.network_arch[i-1]
+            prev_prev_level = self.network_arch[i-2]
+
+            #level_option = torch.sum(self.network_arch[i], dim=1)
+            #prev_level_option = torch.sum(self.network_arch[i-1], dim=1)
+            #prev_prev_level_option = torch.sum(
+            #    self.network_arch[i-2], dim=1)
+            #level = torch.argmax(level_option).item()
+            #prev_level = torch.argmax(prev_level_option).item()
+            #prev_prev_level = torch.argmax(prev_prev_level_option).item()
 
             if i == 0:
-                downup_sample = 0
-                _cell = cell(self._step, self._block_multiplier_d, filter_param_dict[device_layer[-2]],
-                             filter_param_dict[device_layer[-1]],
-                             self.cell_arch, self.network_arch[i],
+                downup_sample = device_layer[-1]-self.network_arch[0]
+                _cell = cell(self._step, self._block_multiplier_d, self._filter_multiplier * filter_param_dict[device_layer[-2]],
+                             self._filter_multiplier * filter_param_dict[device_layer[-1]],
+                             self.cell_arch_c, self.network_arch[i],
                              self._filter_multiplier *
                              filter_param_dict[level],
                              downup_sample)
             else:
-                downup_sample = int(level - prev_level)
+                downup_sample = int(prev_level - level)
                 if i == 1:
-                    _cell = cell(self._step, self._block_multiplier_d,
-                                 filter_param_dict[device_layer[-1]],
-                                 filter_param_dict[self.network_arch[0]],
-                                 self.cell_arch, self.network_arch[i],
+                    _cell = cell(self._step, self._block_multiplier_c,
+                                 self._filter_multiplier * filter_param_dict[device_layer[-1]],
+                                 self._filter_multiplier * filter_param_dict[self.network_arch[0]],
+                                 self.cell_arch_c, self.network_arch[i],
                                  self._filter_multiplier *
                                  filter_param_dict[level],
-                                 downup_sample)
+                                 downup_sample,
+                                 prev_prev_block=4)
                 else:
-                    _cell = cell(self._step, self._block_multiplier, self._filter_multiplier * filter_param_dict[prev_prev_level],
+                    downup_sample = int(prev_level - level)
+                    _cell = cell(self._step, self._block_multiplier_c, self._filter_multiplier * filter_param_dict[prev_prev_level],
                                  self._filter_multiplier *
                                  filter_param_dict[prev_level],
-                                 self.cell_arch, self.network_arch[i],
+                                 self.cell_arch_c, self.network_arch[i],
                                  self._filter_multiplier *
                                  filter_param_dict[level], downup_sample)
-
+            print(_cell)
             self.cells += [_cell]
 
 
-        self.aspp = ASPP_train('autodeeplab', 4*filter_param_dict[self.network_arch[-1]])  # 96 / 4 as in the paper
+        self.aspp = ASPP_train(20*5*filter_param_dict[self.network_arch[-1]], 256, num_classes)  # 96 / 4 as in the paper
 
     def forward(self, x):
-        stem = self.stem0(x)
-        stem0 = self.stem1(stem)
-        stem1 = self.stem2(stem0)
-        two_last_inputs = (stem0, stem1)
+        size = (x.shape[2], x.shape[3])
+        two_last_inputs, device_output = self.device(x)
         for i in range(self._num_layers):
+            
+            #print(two_last_inputs[0].shape)
+            #print(two_last_inputs[1].shape)
+
             two_last_inputs = self.cells[i](
                 two_last_inputs[0], two_last_inputs[1])
             
         last_output = two_last_inputs[-1]
-
+       
+        device_output = nn.Upsample(size, mode='bilinear', align_corners=True)(device_output)
         # if self._full_net is None:
-        aspp_result = self.aspp(last_output)
-            
+        cloud_output = self.aspp(last_output)
+        cloud_output = nn.Upsample(size, mode='bilinear', align_corners=True)(cloud_output)            
             # return aspp_result
         # else:
-        return last_output
+        return device_output, cloud_output
+
+    def get_1x_lr_params(self):
+        modules = [self.device.stem0, self.device.stem1, self.device.stem2, self.device.cells, self.cells]
+        for i in range(len(modules)):
+            if i < 3:
+                for m in modules[i].named_modules():
+                    if isinstance(m[1], nn.Conv2d) or isinstance(m[1], nn.BatchNorm2d):
+                        for p in m[1].parameters():
+                            if p.requires_grad:
+                                yield p
+            else:
+                for cell in modules[i]:
+                    for m in cell.named_modules():
+                        if isinstance(m[1], nn.Conv2d) or isinstance(m[1], nn.BatchNorm2d):
+                            for p in m[1].parameters():
+                                if p.requires_grad:
+                                    yield p
+    def get_10x_lr_params(self):
+        modules = [self.device.aspp_device, self.aspp_cloud]
+        for i in range(len(modules)):
+            for m in modules[i].named_modules():
+                if isinstance(m[1], nn.Conv2d)or isinstance(m[1], nn.BatchNorm2d):
+                    for p in m[1].parameters():
+                        if p.requires_grad:
+                            yield p
 
 class ASPP_train(nn.Module):
     def __init__(self, C, depth, num_classes, conv=nn.Conv2d, norm=nn.BatchNorm2d, momentum=0.0003, mult=1):
@@ -348,19 +411,19 @@ def get_cell():
     cell[7] = [13, 5]
     cell[8] = [19, 7]
     cell[9] = [18, 5]
-    return cell.astype('uint8')
+    return cell.astype('uint8'), cell.astype('uint8')
 
 
 def get_arch():
 
     backbone = [0, 0, 0, 1, 2, 1, 2, 2, 3, 3, 2, 1]
     network_arch = network_layer_to_space(backbone)
-    cell_arch = get_cell()
+    cell_arch, cell_arch2 = get_cell()
 
-    return network_arch, cell_arch
+    return network_arch, cell_arch, cell_arch2
 
 
 def get_default_net(filter_multiplier=8):
-    net_arch, cell_arch = get_arch()
-    return newModel(net_arch, cell_arch, 19, 12, filter_multiplier=filter_multiplier)
+    net_arch, cell_arch, cell_arch2 = get_arch()
+    return new_cloud_Model(net_arch, cell_arch, cell_arch2, 19, 6, filter_multiplier=filter_multiplier)
  
