@@ -55,10 +55,7 @@ class trainNew(object):
                          cell_arch_c = new_cell_arch_c,
                          num_classes=self.nclass,
                          device_num_layers=6)
-#                        output_stride=args.out_stride,
-#                        sync_bn=args.sync_bn,
-#                        freeze_bn=args.freeze_bn)
-        #self.decoder = Decoder(self.nclass, 'autodeeplab', args, False)
+
         # TODO: look into these
         # TODO: ALSO look into different param groups as done int deeplab below
 #        train_params = [{'params': model.get_1x_lr_params(), 'lr': args.lr},
@@ -232,18 +229,11 @@ class trainNew(object):
             self.evaluator_device.add_batch(target, pred_d)
             self.evaluator_cloud.add_batch(target, pred_c)
 
-        # Fast test during the training
-       # Acc = self.evaluator.Pixel_Accuracy()
-       # Acc_class = self.evaluator.Pixel_Accuracy_Class()
         mIoU_d = self.evaluator_device.Mean_Intersection_over_Union()
         mIoU_c = self.evaluator_cloud.Mean_Intersection_over_Union()
-       # FWIoU = self.evaluator.Frequency_Weighted_Intersection_over_Union()
         self.writer.add_scalar('val/total_loss_epoch', test_loss, epoch)
         self.writer.add_scalar('val/device/mIoU', mIoU_d, epoch)
         self.writer.add_scalar('val/cloud/mIoU', mIoU_c, epoch)
-       # self.writer.add_scalar('val/Acc', Acc, epoch)
-       # self.writer.add_scalar('val/Acc_class', Acc_class, epoch)
-       # self.writer.add_scalar('val/fwIoU', FWIoU, epoch)
         print('Validation:')
         print('[Epoch: %d, numImages: %5d]' % (epoch, i * self.args.batch_size + image.data.shape[0]))
         print("device_mIoU:{}, cloud_mIoU: {}".format(mIoU_d, mIoU_c))

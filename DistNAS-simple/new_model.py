@@ -66,10 +66,8 @@ class Cell(nn.Module):
         s0 = self.pre_preprocess(prev_prev_input) if (
             prev_prev_input.shape[1] != self.C_out) else prev_prev_input
         s1 = self.preprocess(prev_input)
-        #print(s0.shape)
-        #print(s1.shape)
         states = [s0, s1]
-        # print(s1.shape)
+
         offset = 0
         ops_index = 0
         for i in range(self._steps):
@@ -135,18 +133,7 @@ class new_device_Model (nn.Module):
             prev_level = network_arch[i-1]
             prev_prev_level = network_arch[i-2]
 
-#            print(self.network_arch[i])
- #           level_option = torch.sum(self.network_arch[i], dim=1)
-  #          prev_level_option = torch.sum(self.network_arch[i-1], dim=1)
-   #         prev_prev_level_option = torch.sum(
-    #            self.network_arch[i-2], dim=1)
-     #       level = torch.argmax(level_option).item()
-      #      prev_level = torch.argmax(prev_level_option).item()
-       #     prev_prev_level = torch.argmax(prev_prev_level_option).item()
-
-
             if i == 0:
-                #downup_sample = 0
                 downup_sample = -1
                 
                 _cell = cell(self._step, self._block_multiplier, ini_initial_fm / block_multiplier,
@@ -186,19 +173,11 @@ class new_device_Model (nn.Module):
         stem = 0
         two_last_inputs = (stem0, stem1)
         for i in range(self._num_layers):
-            #print(i)
-            #print(two_last_inputs[0].shape)
-            #print(two_last_inputs[1].shape)
             two_last_inputs = self.cells[i](
                 two_last_inputs[0], two_last_inputs[1])
             
         last_output = two_last_inputs[-1]
-
-        # if self._full_net is None:
         aspp_result = self.aspp(last_output)
-            
-            # return aspp_result
-        # else:
         return  two_last_inputs, aspp_result
 
 class new_cloud_Model (nn.Module):
@@ -234,14 +213,6 @@ class new_cloud_Model (nn.Module):
             level = self.network_arch[i]
             prev_level = self.network_arch[i-1]
             prev_prev_level = self.network_arch[i-2]
-
-            #level_option = torch.sum(self.network_arch[i], dim=1)
-            #prev_level_option = torch.sum(self.network_arch[i-1], dim=1)
-            #prev_prev_level_option = torch.sum(
-            #    self.network_arch[i-2], dim=1)
-            #level = torch.argmax(level_option).item()
-            #prev_level = torch.argmax(prev_level_option).item()
-            #prev_prev_level = torch.argmax(prev_prev_level_option).item()
 
             if i == 0:
                 downup_sample = device_layer[-1]-self.network_arch[0]
@@ -280,21 +251,14 @@ class new_cloud_Model (nn.Module):
         size = (x.shape[2], x.shape[3])
         two_last_inputs, device_output = self.device(x)
         for i in range(self._num_layers):
-            
-            #print(two_last_inputs[0].shape)
-            #print(two_last_inputs[1].shape)
-
             two_last_inputs = self.cells[i](
                 two_last_inputs[0], two_last_inputs[1])
             
         last_output = two_last_inputs[-1]
-       
         device_output = nn.Upsample(size, mode='bilinear', align_corners=True)(device_output)
-        # if self._full_net is None:
         cloud_output = self.aspp(last_output)
         cloud_output = nn.Upsample(size, mode='bilinear', align_corners=True)(cloud_output)            
-            # return aspp_result
-        # else:
+
         return device_output, cloud_output
 
     def get_1x_lr_params(self):
