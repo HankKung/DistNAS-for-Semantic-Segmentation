@@ -18,12 +18,12 @@ from utils.metrics import Evaluator
 from auto_deeplab import AutoDeeplab
 from architect import Architect
 from utils.copy_state_dict import copy_state_dict
-# import apex
-# try:
-#     from apex import amp
-#     APEX_AVAILABLE = True
-# except ModuleNotFoundError:
-#     APEX_AVAILABLE = False
+import apex
+try:
+    from apex import amp
+    APEX_AVAILABLE = True
+except ModuleNotFoundError:
+    APEX_AVAILABLE = False
 
 
 print('working with pytorch version {}'.format(torch.__version__))
