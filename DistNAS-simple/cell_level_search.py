@@ -41,7 +41,7 @@ class Cell(nn.Module):
             if block_multiplier_d != 0:
                 dist_C_prev_down = int(prev_fmultiplier_down * block_multiplier_d)
                 self.preprocess_down = ReLUConvBN(
-                    self.dist_C_prev_down, self.C_out, 1, 1, 0, affine=False)
+                    dist_C_prev_down, self.C_out, 1, 1, 0, affine=False)
             else:    
                 self.C_prev_down = int(prev_fmultiplier_down * block_multiplier)
                 self.preprocess_down = ReLUConvBN(
@@ -50,7 +50,7 @@ class Cell(nn.Module):
             if block_multiplier_d != 0:
                 dist_C_prev_same = int(prev_fmultiplier_same * block_multiplier_d)
                 self.preprocess_same = ReLUConvBN(
-                    self.dist_C_prev_same, self.C_out, 1, 1, 0, affine=False)
+                    dist_C_prev_same, self.C_out, 1, 1, 0, affine=False)
             else:
                 self.C_prev_same = int(prev_fmultiplier_same * block_multiplier)
                 self.preprocess_same = ReLUConvBN(
@@ -59,7 +59,7 @@ class Cell(nn.Module):
             if block_multiplier_d !=0:
                 dist_C_prev_up = int(prev_fmultiplier_up * block_multiplier_d)
                 self.preprocess_up = ReLUConvBN(
-                    self.dist_C_prev_up, self.C_out, 1, 1, 0, affine=False)
+                    dist_C_prev_up, self.C_out, 1, 1, 0, affine=False)
             else:
                 self.C_prev_up = int(prev_fmultiplier_up * block_multiplier)
                 self.preprocess_up = ReLUConvBN(
@@ -67,12 +67,12 @@ class Cell(nn.Module):
 
         if prev_prev_fmultiplier != -1:
             if dist_prev_prev:
-                dist_C_prev_prev = int(prev_prev_fmultiplier * block_multiplier_d)
+                dist_C_prev_prev = int(prev_prev_fmultiplier * 4)
+                self.pre_preprocess = ReLUConvBN(
+                    dist_C_prev_prev, self.C_out, 1, 1, 0, affine=False)
+            else:
                 self.pre_preprocess = ReLUConvBN(
                     self.C_prev_prev, self.C_out, 1, 1, 0, affine=False)
-            else:
-            self.pre_preprocess = ReLUConvBN(
-                self.C_prev_prev, self.C_out, 1, 1, 0, affine=False)
 
         self._steps = steps
         self.block_multiplier = block_multiplier

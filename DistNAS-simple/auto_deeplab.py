@@ -254,7 +254,7 @@ class AutoDeeplab (nn.Module) :
 
         count = 0
 
-        normalized_betas = [[[0]*3]*4]*12
+        normalized_betas = torch.randn(12, 4, 3).cuda().half()
         # Softmax on alphas and betas
         if torch.cuda.device_count() > 1:
             img_device = torch.device('cuda', x.get_device())
@@ -278,7 +278,7 @@ class AutoDeeplab (nn.Module) :
                     normalized_betas[layer][0][1:] = F.softmax (self.betas[layer][0][1:].to(device=img_device), dim=-1)
                     normalized_betas[layer][1] = F.softmax (self.betas[layer][1].to(device=img_device), dim=-1)
                     normalized_betas[layer][2] = F.softmax (self.betas[layer][2].to(device=img_device), dim=-1)
-                    normalized_betas[layer][3][:1] = F.softmax (self.betas[layer][3][:1].to(device=img_device), dim=-1)
+                    normalized_betas[layer][3][:2] = F.softmax (self.betas[layer][3][:2].to(device=img_device), dim=-1)
 
         else:
             normalized_alphas_d = F.softmax(self.alphas_d, dim=-1)
@@ -300,7 +300,7 @@ class AutoDeeplab (nn.Module) :
                     normalized_betas[layer][0][1:] = F.softmax (self.betas[layer][0][1:], dim=-1)
                     normalized_betas[layer][1] = F.softmax (self.betas[layer][1], dim=-1)
                     normalized_betas[layer][2] = F.softmax (self.betas[layer][2], dim=-1)
-                    normalized_betas[layer][3][:1] = F.softmax (self.betas[layer][3][:1], dim=-1)
+                    normalized_betas[layer][3][:2] = F.softmax (self.betas[layer][3][:2], dim=-1)
 
         for layer in range (self._num_layers) :
 
@@ -599,11 +599,11 @@ class AutoDeeplab (nn.Module) :
         [self.register_parameter(name, torch.nn.Parameter(param)) for name, param in zip(self._arch_param_names, self._arch_parameters)]
 
     def decode_viterbi(self):
-        decoder = Decoder(self.bottom_betas, self.betas8, self.betas16, self.top_betas)
+        decoder = Decoder(self.alphas_d, self.alphas_c, self.betas, 5)
         return decoder.viterbi_decode()
 
     def decode_dfs(self):
-        decoder = Decoder(self.bottom_betas, self.betas8, self.betas16, self.top_betas)
+        decoder = Decoder(self.alphas_d, self.alphas_c, self.betas, 5)
         return decoder.dfs_decode()
 
     def arch_parameters (self) :
@@ -613,7 +613,7 @@ class AutoDeeplab (nn.Module) :
         return [param for name, param in self.named_parameters() if name not in self._arch_param_names]
 
     def genotype(self):
-        decoder = Decoder(self.alphas_cell, self._block_multiplier, self._step)
+        decoder = Decoder(self.alphas_d, self.alphas_c, self.betas, self._step)
         return decoder.genotype_decode()
 
     def _loss (self, input, target) :
